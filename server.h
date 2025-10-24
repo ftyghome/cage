@@ -3,6 +3,8 @@
 
 #include "config.h"
 
+#include <gio/gio.h>
+#include <time.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
@@ -69,6 +71,10 @@ struct cg_server {
 	bool return_app_code;
 	bool terminated;
 	enum wlr_log_importance log_level;
+
+	GDBusConnection *dbus_connection;
+	int ctrl_alt_del_count;
+	struct timespec last_ctrl_alt_del_time;
 };
 
 void server_terminate(struct cg_server *server);

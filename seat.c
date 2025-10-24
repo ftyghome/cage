@@ -14,6 +14,7 @@
 #include <linux/input-event-codes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/backend/multi.h>
@@ -253,6 +254,26 @@ handle_modifier_event(struct wlr_keyboard *keyboard, struct cg_seat *seat)
 	wlr_idle_notifier_v1_notify_activity(seat->server->idle, seat->seat);
 }
 
+static void
+send_emergency_signal(struct cg_server *server)
+{
+	if (server->dbus_connection == NULL) {
+		wlr_log(WLR_ERROR, "Cannot send emergency signal: D-Bus connection not available");
+		return;
+	}
+
+	GError *error = NULL;
+	g_dbus_connection_emit_signal(server->dbus_connection, NULL, "/com/pavus/control/KioskControl",
+				      "com.pavus.control.KioskControl", "EmergencyRequested", NULL, &error);
+
+	if (error != NULL) {
+		wlr_log(WLR_ERROR, "Failed to emit EmergencyRequested signal: %s", error->message);
+		g_error_free(error);
+	} else {
+		wlr_log(WLR_INFO, "EmergencyRequested signal sent via D-Bus");
+	}
+}
+
 static bool
 handle_keybinding(struct cg_server *server, xkb_keysym_t sym)
 {
@@ -277,6 +298,32 @@ handle_keybinding(struct cg_server *server, xkb_keysym_t sym)
 }
 
 static void
+handle_ctrl_alt_del(struct cg_server *server)
+{
+	struct timespec current_time;
+	clock_gettime(CLOCK_MONOTONIC, &current_time);
+
+	const long timeout_seconds = 3;
+	long elapsed_seconds = current_time.tv_sec - server->last_ctrl_alt_del_time.tv_sec;
+
+	if (elapsed_seconds > timeout_seconds) {
+		server->ctrl_alt_del_count = 1;
+	} else {
+		server->ctrl_alt_del_count++;
+	}
+
+	server->last_ctrl_alt_del_time = current_time;
+
+	wlr_log(WLR_DEBUG, "Ctrl+Alt+Del pressed (%d/5)", server->ctrl_alt_del_count);
+
+	if (server->ctrl_alt_del_count >= 5) {
+		wlr_log(WLR_INFO, "Ctrl+Alt+Del pressed 5 times, sending emergency signal");
+		send_emergency_signal(server);
+		server->ctrl_alt_del_count = 0;
+	}
+}
+
+static void
 handle_key_event(struct wlr_keyboard *keyboard, struct cg_seat *seat, void *data)
 {
 	struct wlr_keyboard_key_event *event = data;
@@ -289,7 +336,19 @@ handle_key_event(struct wlr_keyboard *keyboard, struct cg_seat *seat, void *data
 
 	bool handled = false;
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard);
-	if ((modifiers & WLR_MODIFIER_ALT) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+
+	if ((modifiers & WLR_MODIFIER_CTRL) && (modifiers & WLR_MODIFIER_ALT) &&
+	    event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		for (int i = 0; i < nsyms; i++) {
+			if (syms[i] == XKB_KEY_Delete) {
+				handle_ctrl_alt_del(seat->server);
+				handled = true;
+				break;
+			}
+		}
+	}
+
+	if (!handled && (modifiers & WLR_MODIFIER_ALT) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		/* If Alt is held down and this button was pressed, we
 		 * attempt to process it as a compositor
 		 * keybinding. */

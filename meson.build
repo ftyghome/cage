@@ -39,6 +39,7 @@ wlroots        = dependency('wlroots-0.19', fallback: ['wlroots', 'wlroots'])
 wayland_protos = dependency('wayland-protocols', version: '>=1.14')
 wayland_server = dependency('wayland-server')
 xkbcommon      = dependency('xkbcommon')
+gio            = dependency('gio-2.0')
 math           = cc.find_library('m')
 
 wl_protocol_dir = wayland_protos.get_variable('pkgdatadir')
@@ -144,6 +145,7 @@ executable(
     wayland_server,
     wlroots,
     xkbcommon,
+    gio,
     math,
   ],
   install: true,

@@ -288,6 +288,11 @@ main(int argc, char *argv[])
 	server.log_level = WLR_DEBUG;
 #endif
 
+	server.dbus_connection = NULL;
+	server.ctrl_alt_del_count = 0;
+	server.last_ctrl_alt_del_time.tv_sec = 0;
+	server.last_ctrl_alt_del_time.tv_nsec = 0;
+
 	if (!parse_args(&server, argc, argv)) {
 		return 1;
 	}
@@ -583,6 +588,16 @@ main(int argc, char *argv[])
 		goto end;
 	}
 
+	GError *error = NULL;
+	server.dbus_connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
+	if (error != NULL) {
+		wlr_log(WLR_ERROR, "Failed to connect to D-Bus: %s", error->message);
+		g_error_free(error);
+		server.dbus_connection = NULL;
+	} else {
+		wlr_log(WLR_INFO, "Connected to D-Bus system bus");
+	}
+
 	if (setenv("WAYLAND_DISPLAY", socket, true) < 0) {
 		wlr_log_errno(WLR_ERROR, "Unable to set WAYLAND_DISPLAY. Clients may not be able to connect");
 	} else {
@@ -635,6 +650,10 @@ end:
 		wl_event_source_remove(sigchld_source);
 	}
 	seat_destroy(server.seat);
+	if (server.dbus_connection != NULL) {
+		g_object_unref(server.dbus_connection);
+		server.dbus_connection = NULL;
+	}
 	/* This function is not null-safe, but we only ever get here
 	   with a proper wl_display. */
 	wl_display_destroy(server.wl_display);
