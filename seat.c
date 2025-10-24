@@ -255,22 +255,27 @@ handle_modifier_event(struct wlr_keyboard *keyboard, struct cg_seat *seat)
 }
 
 static void
-send_emergency_signal(struct cg_server *server)
+call_show_emergency(struct cg_server *server)
 {
 	if (server->dbus_connection == NULL) {
-		wlr_log(WLR_ERROR, "Cannot send emergency signal: D-Bus connection not available");
+		wlr_log(WLR_ERROR, "Cannot call ShowEmergency: D-Bus connection not available");
 		return;
 	}
 
 	GError *error = NULL;
-	g_dbus_connection_emit_signal(server->dbus_connection, NULL, "/com/pavus/control/KioskControl",
-				      "com.pavus.control.KioskControl", "EmergencyRequested", NULL, &error);
+	GVariant *result =
+		g_dbus_connection_call_sync(server->dbus_connection, "com.pavus.control",
+					    "/com/pavus/control/KioskControl", "com.pavus.control.KioskControl",
+					    "ShowEmergency", NULL, NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &error);
 
 	if (error != NULL) {
-		wlr_log(WLR_ERROR, "Failed to emit EmergencyRequested signal: %s", error->message);
+		wlr_log(WLR_ERROR, "Failed to call ShowEmergency: %s", error->message);
 		g_error_free(error);
 	} else {
-		wlr_log(WLR_INFO, "EmergencyRequested signal sent via D-Bus");
+		wlr_log(WLR_INFO, "ShowEmergency method called via D-Bus");
+		if (result != NULL) {
+			g_variant_unref(result);
+		}
 	}
 }
 
@@ -317,8 +322,8 @@ handle_ctrl_alt_del(struct cg_server *server)
 	wlr_log(WLR_DEBUG, "Ctrl+Alt+Del pressed (%d/5)", server->ctrl_alt_del_count);
 
 	if (server->ctrl_alt_del_count >= 5) {
-		wlr_log(WLR_INFO, "Ctrl+Alt+Del pressed 5 times, sending emergency signal");
-		send_emergency_signal(server);
+		wlr_log(WLR_INFO, "Ctrl+Alt+Del pressed 5 times, calling ShowEmergency");
+		call_show_emergency(server);
 		server->ctrl_alt_del_count = 0;
 	}
 }
