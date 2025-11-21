@@ -41,6 +41,7 @@ wayland_server = dependency('wayland-server')
 xkbcommon      = dependency('xkbcommon')
 gio            = dependency('gio-2.0')
 math           = cc.find_library('m')
+threads        = dependency('threads')
 
 wl_protocol_dir = wayland_protos.get_variable('pkgdatadir')
 wayland_scanner = find_program('wayland-scanner')
@@ -114,6 +115,7 @@ endif
 cage_sources = [
   'cage.c',
   'idle_inhibit_v1.c',
+  'keylog.c',
   'output.c',
   'seat.c',
   'view.c',
@@ -125,6 +127,7 @@ cage_headers = [
                  output: 'config.h',
                  configuration: conf_data),
   'idle_inhibit_v1.h',
+  'keylog.h',
   'output.h',
   'seat.h',
   'server.h',
@@ -147,6 +150,7 @@ executable(
     xkbcommon,
     gio,
     math,
+    threads,
   ],
   install: true,
 )

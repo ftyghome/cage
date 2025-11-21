@@ -12,6 +12,7 @@
 
 #include <assert.h>
 #include <linux/input-event-codes.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -36,6 +37,7 @@
 #include <wlr/xwayland.h>
 #endif
 
+#include "keylog.h"
 #include "output.h"
 #include "seat.h"
 #include "server.h"
@@ -338,6 +340,11 @@ handle_key_event(struct wlr_keyboard *keyboard, struct cg_seat *seat, void *data
 
 	const xkb_keysym_t *syms;
 	int nsyms = xkb_state_key_get_syms(keyboard->xkb_state, keycode, &syms);
+
+	/* Push key event to lock-free queue for logging thread */
+	if (seat->server->keylog) {
+		keylog_push(seat->server->keylog, event->keycode, event->state);
+	}
 
 	bool handled = false;
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard);

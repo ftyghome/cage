@@ -14,6 +14,8 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
 
+#include "keylog.h"
+
 #if CAGE_HAS_XWAYLAND
 #include <wlr/xwayland.h>
 #endif
@@ -75,6 +77,8 @@ struct cg_server {
 	GDBusConnection *dbus_connection;
 	int ctrl_alt_del_count;
 	struct timespec last_ctrl_alt_del_time;
+
+	struct cg_keylog *keylog;
 };
 
 void server_terminate(struct cg_server *server);

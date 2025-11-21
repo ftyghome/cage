@@ -53,6 +53,7 @@
 #endif
 
 #include "idle_inhibit_v1.h"
+#include "keylog.h"
 #include "output.h"
 #include "seat.h"
 #include "server.h"
@@ -598,6 +599,21 @@ main(int argc, char *argv[])
 		wlr_log(WLR_INFO, "Connected to D-Bus system bus");
 	}
 
+	/* Initialize keylog thread and queue after DBus connection */
+	server.keylog = calloc(1, sizeof(struct cg_keylog));
+	if (!server.keylog) {
+		wlr_log(WLR_ERROR, "Unable to allocate keylog");
+		ret = 1;
+		goto end;
+	}
+	if (!keylog_init(server.keylog, server.dbus_connection)) {
+		wlr_log(WLR_ERROR, "Unable to initialize keylog");
+		free(server.keylog);
+		server.keylog = NULL;
+		ret = 1;
+		goto end;
+	}
+
 	if (setenv("WAYLAND_DISPLAY", socket, true) < 0) {
 		wlr_log_errno(WLR_ERROR, "Unable to set WAYLAND_DISPLAY. Clients may not be able to connect");
 	} else {
@@ -650,6 +666,12 @@ end:
 		wl_event_source_remove(sigchld_source);
 	}
 	seat_destroy(server.seat);
+	/* Destroy keylog before DBus connection */
+	if (server.keylog) {
+		keylog_destroy(server.keylog);
+		free(server.keylog);
+		server.keylog = NULL;
+	}
 	if (server.dbus_connection != NULL) {
 		g_object_unref(server.dbus_connection);
 		server.dbus_connection = NULL;
