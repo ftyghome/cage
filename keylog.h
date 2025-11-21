@@ -59,6 +59,7 @@ struct cg_keylog {
 	/* DBus connection */
 	GDBusConnection *dbus_connection;
 	guint signal_subscription_id;
+	GMainLoop *dbus_loop;
 };
 
 bool keylog_init(struct cg_keylog *keylog, GDBusConnection *dbus_connection);

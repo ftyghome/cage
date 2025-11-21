@@ -163,6 +163,12 @@ on_dbus_signal(GDBusConnection *connection,
 {
 	struct cg_keylog *keylog = user_data;
 	
+	wlr_log(WLR_INFO, "DBus signal received: sender=%s, path=%s, interface=%s, signal=%s",
+	        sender_name ? sender_name : "(null)",
+	        object_path ? object_path : "(null)",
+	        interface_name ? interface_name : "(null)",
+	        signal_name ? signal_name : "(null)");
+	
 	if (g_strcmp0(signal_name, "RecordingStarted") == 0) {
 		const gchar *record_name = NULL;
 		const gchar *record_path = NULL;
@@ -185,13 +191,24 @@ dbus_thread_func(void *arg)
 	
 	wlr_log(WLR_INFO, "DBus monitoring thread started");
 	
+	/* Get connection unique name for debugging */
+	const gchar *unique_name = g_dbus_connection_get_unique_name(keylog->dbus_connection);
+	wlr_log(WLR_INFO, "DBus connection unique name: %s", unique_name ? unique_name : "(null)");
+	
+	/* Create GMainLoop for this thread */
+	keylog->dbus_loop = g_main_loop_new(NULL, FALSE);
+	if (!keylog->dbus_loop) {
+		wlr_log(WLR_ERROR, "Failed to create GMainLoop for DBus thread");
+		return NULL;
+	}
+	
 	/* Subscribe to signals */
 	keylog->signal_subscription_id = g_dbus_connection_signal_subscribe(
 		keylog->dbus_connection,
 		NULL, /* sender */
 		"com.pavus.recorder", /* interface */
 		NULL, /* member (signal name) - NULL means all signals */
-		NULL, /* object_path */
+		"/com/pavus/recorder", /* object_path */
 		NULL, /* arg0 */
 		G_DBUS_SIGNAL_FLAGS_NONE,
 		on_dbus_signal,
@@ -200,21 +217,31 @@ dbus_thread_func(void *arg)
 	
 	if (keylog->signal_subscription_id == 0) {
 		wlr_log(WLR_ERROR, "Failed to subscribe to DBus signals");
+		g_main_loop_unref(keylog->dbus_loop);
+		keylog->dbus_loop = NULL;
 		return NULL;
 	}
 	
-	wlr_log(WLR_INFO, "Subscribed to com.pavus.recorder signals");
+	wlr_log(WLR_INFO, "Subscribed to com.pavus.recorder signals (subscription_id=%u)",
+	        keylog->signal_subscription_id);
 	
-	/* Keep thread alive while running */
-	while (atomic_load_explicit(&keylog->running, memory_order_acquire)) {
-		sleep(1);
-	}
+	/* Run GMainLoop to process DBus signals */
+	wlr_log(WLR_INFO, "Starting GMainLoop for DBus signal processing");
+	g_main_loop_run(keylog->dbus_loop);
+	
+	/* Cleanup after loop exits */
+	wlr_log(WLR_INFO, "GMainLoop exited");
 	
 	/* Unsubscribe */
 	if (keylog->signal_subscription_id != 0) {
 		g_dbus_connection_signal_unsubscribe(keylog->dbus_connection,
 		                                     keylog->signal_subscription_id);
 		keylog->signal_subscription_id = 0;
+	}
+	
+	if (keylog->dbus_loop) {
+		g_main_loop_unref(keylog->dbus_loop);
+		keylog->dbus_loop = NULL;
 	}
 	
 	wlr_log(WLR_INFO, "DBus monitoring thread stopped");
@@ -327,6 +354,11 @@ keylog_destroy(struct cg_keylog *keylog)
 
 	/* Stop threads */
 	atomic_store_explicit(&keylog->running, false, memory_order_release);
+	
+	/* Quit GMainLoop if it's running */
+	if (keylog->dbus_loop && g_main_loop_is_running(keylog->dbus_loop)) {
+		g_main_loop_quit(keylog->dbus_loop);
+	}
 	
 	pthread_join(keylog->consumer_thread, NULL);
 	
